@@ -27,7 +27,7 @@
  */
 package org.hisp.dhis.analytics.event.data;
 
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.ANALYTICS_TBL_ALIAS;
+import static org.hisp.dhis.analytics.AnalyticsConstants.ANALYTICS_TBL_ALIAS;
 import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.quoteAlias;
 import static org.hisp.dhis.common.DimensionalObject.PERIOD_DIM_ID;
 import static org.hisp.dhis.commons.util.TextUtils.EMPTY;
@@ -49,7 +49,6 @@ import org.hisp.dhis.analytics.EventOutputType;
 import org.hisp.dhis.analytics.TimeField;
 import org.hisp.dhis.analytics.event.EventQueryParams;
 import org.hisp.dhis.common.DimensionalItemObject;
-import org.hisp.dhis.jdbc.StatementBuilder;
 import org.hisp.dhis.period.Period;
 import org.hisp.dhis.program.AnalyticsPeriodBoundary;
 import org.hisp.dhis.program.ProgramIndicator;
@@ -59,8 +58,6 @@ import org.springframework.util.Assert;
 @Component
 @RequiredArgsConstructor
 class EnrollmentTimeFieldSqlRenderer extends TimeFieldSqlRenderer {
-  private final StatementBuilder statementBuilder;
-
   @Getter private final Set<TimeField> allowedTimeFields = Set.of(TimeField.LAST_UPDATED);
 
   @Override

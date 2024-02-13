@@ -27,17 +27,16 @@
  */
 package org.hisp.dhis.analytics.table;
 
-import static org.hisp.dhis.analytics.ColumnDataType.CHARACTER_11;
-import static org.hisp.dhis.analytics.ColumnDataType.DOUBLE;
-import static org.hisp.dhis.analytics.ColumnDataType.INTEGER;
-import static org.hisp.dhis.analytics.ColumnDataType.TEXT;
-import static org.hisp.dhis.analytics.ColumnDataType.TIMESTAMP;
-import static org.hisp.dhis.analytics.ColumnDataType.VARCHAR_255;
-import static org.hisp.dhis.analytics.ColumnNotNullConstraint.NOT_NULL;
-import static org.hisp.dhis.analytics.table.PartitionUtils.getLatestTablePartition;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.quote;
-import static org.hisp.dhis.commons.util.TextUtils.getQuotedCommaDelimitedString;
-import static org.hisp.dhis.dataapproval.DataApprovalLevelService.APPROVAL_LEVEL_UNAPPROVED;
+import static org.hisp.dhis.analytics.table.model.AnalyticsValueType.FACT;
+import static org.hisp.dhis.analytics.table.util.PartitionUtils.getLatestTablePartition;
+import static org.hisp.dhis.db.model.DataType.CHARACTER_11;
+import static org.hisp.dhis.db.model.DataType.DOUBLE;
+import static org.hisp.dhis.db.model.DataType.INTEGER;
+import static org.hisp.dhis.db.model.DataType.TEXT;
+import static org.hisp.dhis.db.model.DataType.TIMESTAMP;
+import static org.hisp.dhis.db.model.DataType.VARCHAR_255;
+import static org.hisp.dhis.db.model.constraint.Nullable.NOT_NULL;
+import static org.hisp.dhis.db.model.constraint.Nullable.NULL;
 import static org.hisp.dhis.util.DateUtils.getLongDateString;
 
 import com.google.common.collect.Sets;
@@ -45,32 +44,30 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.hisp.dhis.analytics.AggregationType;
-import org.hisp.dhis.analytics.AnalyticsExportSettings;
-import org.hisp.dhis.analytics.AnalyticsTable;
-import org.hisp.dhis.analytics.AnalyticsTableColumn;
 import org.hisp.dhis.analytics.AnalyticsTableHookService;
-import org.hisp.dhis.analytics.AnalyticsTablePartition;
 import org.hisp.dhis.analytics.AnalyticsTableType;
 import org.hisp.dhis.analytics.AnalyticsTableUpdateParams;
-import org.hisp.dhis.analytics.ColumnDataType;
 import org.hisp.dhis.analytics.DataQueryParams;
 import org.hisp.dhis.analytics.partition.PartitionManager;
+import org.hisp.dhis.analytics.table.model.AnalyticsTable;
+import org.hisp.dhis.analytics.table.model.AnalyticsTableColumn;
+import org.hisp.dhis.analytics.table.model.AnalyticsTablePartition;
+import org.hisp.dhis.analytics.table.setting.AnalyticsTableExportSettings;
 import org.hisp.dhis.analytics.util.AnalyticsUtils;
 import org.hisp.dhis.category.Category;
 import org.hisp.dhis.category.CategoryOptionGroupSet;
 import org.hisp.dhis.category.CategoryService;
 import org.hisp.dhis.common.IdentifiableObjectManager;
 import org.hisp.dhis.common.ValueType;
-import org.hisp.dhis.commons.collection.ListUtils;
 import org.hisp.dhis.commons.util.TextUtils;
 import org.hisp.dhis.dataapproval.DataApprovalLevelService;
 import org.hisp.dhis.dataelement.DataElementGroupSet;
-import org.hisp.dhis.jdbc.StatementBuilder;
-import org.hisp.dhis.organisationunit.OrganisationUnitGroupSet;
+import org.hisp.dhis.db.sql.SqlBuilder;
 import org.hisp.dhis.organisationunit.OrganisationUnitLevel;
 import org.hisp.dhis.organisationunit.OrganisationUnitService;
 import org.hisp.dhis.period.PeriodDataProvider;
@@ -107,17 +104,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
   private static final List<AnalyticsTableColumn> FIXED_COLS =
       List.of(
-          new AnalyticsTableColumn(quote("dx"), CHARACTER_11, NOT_NULL, "de.uid"),
-          new AnalyticsTableColumn(quote("co"), CHARACTER_11, NOT_NULL, "co.uid")
-              .withIndexColumns(List.of(quote("dx"), quote("co"))),
-          new AnalyticsTableColumn(quote("ao"), CHARACTER_11, NOT_NULL, "ao.uid")
-              .withIndexColumns(List.of(quote("dx"), quote("ao"))),
-          new AnalyticsTableColumn(quote("pestartdate"), TIMESTAMP, "pe.startdate"),
-          new AnalyticsTableColumn(quote("peenddate"), TIMESTAMP, "pe.enddate"),
-          new AnalyticsTableColumn(quote("year"), INTEGER, NOT_NULL, "ps.year"),
-          new AnalyticsTableColumn(quote("pe"), TEXT, NOT_NULL, "ps.iso"),
-          new AnalyticsTableColumn(quote("ou"), CHARACTER_11, NOT_NULL, "ou.uid"),
-          new AnalyticsTableColumn(quote("oulevel"), INTEGER, "ous.level"));
+          new AnalyticsTableColumn("dx", CHARACTER_11, NOT_NULL, "de.uid"),
+          new AnalyticsTableColumn("co", CHARACTER_11, NOT_NULL, "co.uid", List.of("dx", "co")),
+          new AnalyticsTableColumn("ao", CHARACTER_11, NOT_NULL, "ao.uid", List.of("dx", "ao")),
+          new AnalyticsTableColumn("pestartdate", TIMESTAMP, "pe.startdate"),
+          new AnalyticsTableColumn("peenddate", TIMESTAMP, "pe.enddate"),
+          new AnalyticsTableColumn("year", INTEGER, NOT_NULL, "ps.year"),
+          new AnalyticsTableColumn("pe", TEXT, NOT_NULL, "ps.iso"),
+          new AnalyticsTableColumn("ou", CHARACTER_11, NOT_NULL, "ou.uid"),
+          new AnalyticsTableColumn("oulevel", INTEGER, "ous.level"));
 
   public JdbcAnalyticsTableManager(
       IdentifiableObjectManager idObjectManager,
@@ -127,12 +122,12 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
       DataApprovalLevelService dataApprovalLevelService,
       ResourceTableService resourceTableService,
       AnalyticsTableHookService tableHookService,
-      StatementBuilder statementBuilder,
       PartitionManager partitionManager,
       DatabaseInfoProvider databaseInfoProvider,
       @Qualifier("analyticsJdbcTemplate") JdbcTemplate jdbcTemplate,
-      AnalyticsExportSettings analyticsExportSettings,
-      PeriodDataProvider periodDataProvider) {
+      AnalyticsTableExportSettings analyticsExportSettings,
+      PeriodDataProvider periodDataProvider,
+      SqlBuilder sqlBuilder) {
     super(
         idObjectManager,
         organisationUnitService,
@@ -141,12 +136,12 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
         dataApprovalLevelService,
         resourceTableService,
         tableHookService,
-        statementBuilder,
         partitionManager,
         databaseInfoProvider,
         jdbcTemplate,
         analyticsExportSettings,
-        periodDataProvider);
+        periodDataProvider,
+        sqlBuilder);
   }
 
   // -------------------------------------------------------------------------
@@ -163,11 +158,10 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
   public List<AnalyticsTable> getAnalyticsTables(AnalyticsTableUpdateParams params) {
     AnalyticsTable table =
         params.isLatestUpdate()
-            ? getLatestAnalyticsTable(params, getDimensionColumns(), getValueColumns())
-            : getRegularAnalyticsTable(
-                params, getDataYears(params), getDimensionColumns(), getValueColumns());
+            ? getLatestAnalyticsTable(params, getColumns(params))
+            : getRegularAnalyticsTable(params, getDataYears(params), getColumns(params));
 
-    return table.hasPartitionTables() ? List.of(table) : List.of();
+    return table.hasTablePartitions() ? List.of(table) : List.of();
   }
 
   @Override
@@ -241,18 +235,15 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
   }
 
   @Override
-  protected List<String> getPartitionChecks(AnalyticsTablePartition partition) {
-    return partition.isLatestPartition()
-        ? List.of()
-        : List.of(
-            "year = " + partition.getYear() + "",
-            "pestartdate < '" + DateUtils.getMediumDateString(partition.getEndDate()) + "'");
+  protected List<String> getPartitionChecks(Integer year, Date endDate) {
+    Objects.requireNonNull(year);
+    return List.of(
+        "year = " + year + "", "pestartdate < '" + DateUtils.getMediumDateString(endDate) + "'");
   }
 
   @Override
   protected void populateTable(
       AnalyticsTableUpdateParams params, AnalyticsTablePartition partition) {
-    String dbl = statementBuilder.getDoubleColumnType();
     boolean skipDataTypeValidation =
         systemSettingManager.getBoolSetting(
             SettingKey.SKIP_DATA_TYPE_VALIDATION_IN_ANALYTICS_TABLE_EXPORT);
@@ -262,11 +253,7 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     String numericClause =
         skipDataTypeValidation
             ? ""
-            : ("and dv.value "
-                + statementBuilder.getRegexpMatch()
-                + " '"
-                + MathUtils.NUMERIC_LENIENT_REGEXP
-                + "' ");
+            : ("and dv.value ~* '" + MathUtils.NUMERIC_LENIENT_REGEXP + "' ");
     String zeroValueCondition = includeZeroValues ? " or de.zeroissignificant = true" : "";
     String zeroValueClause =
         "(dv.value != '0' or de.aggregationtype in ('"
@@ -281,7 +268,7 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     populateTable(
         params,
         partition,
-        "cast(dv.value as " + dbl + ")",
+        "cast(dv.value as double precision)",
         "null",
         ValueType.NUMERIC_TYPES,
         intClause);
@@ -290,10 +277,9 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
         partition,
         "1",
         "null",
-        Sets.newHashSet(ValueType.BOOLEAN, ValueType.TRUE_ONLY),
+        Set.of(ValueType.BOOLEAN, ValueType.TRUE_ONLY),
         "dv.value = 'true'");
-    populateTable(
-        params, partition, "0", "null", Sets.newHashSet(ValueType.BOOLEAN), "dv.value = 'false'");
+    populateTable(params, partition, "0", "null", Set.of(ValueType.BOOLEAN), "dv.value = 'false'");
     populateTable(
         params,
         partition,
@@ -318,36 +304,37 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
       String textValueExpression,
       Set<ValueType> valueTypes,
       String whereClause) {
-    String tableName = partition.getTempTableName();
-    String valTypes = TextUtils.getQuotedCommaDelimitedString(ObjectUtils.asStringList(valueTypes));
+    String tableName = partition.getName();
+    String valTypes = quotedCommaDelimitedString(ObjectUtils.asStringList(valueTypes));
     boolean respectStartEndDates =
         systemSettingManager.getBoolSetting(
             SettingKey.RESPECT_META_DATA_START_END_DATES_IN_ANALYTICS_TABLE_EXPORT);
+    String approvalSelectExpression = getApprovalSelectExpression(partition.getYear());
     String approvalClause = getApprovalJoinClause(partition.getYear());
     String partitionClause =
         partition.isLatestPartition()
             ? "and dv.lastupdated >= '" + getLongDateString(partition.getStartDate()) + "' "
             : "and ps.year = " + partition.getYear() + " ";
 
-    String sql = "insert into " + partition.getTempTableName() + " (";
+    String sql = "insert into " + tableName + " (";
 
-    List<AnalyticsTableColumn> columns = getDimensionColumns(partition.getYear(), params);
-    List<AnalyticsTableColumn> values = partition.getMasterTable().getValueColumns();
+    List<AnalyticsTableColumn> dimensions = partition.getMasterTable().getDimensionColumns();
+    List<AnalyticsTableColumn> columns = partition.getMasterTable().getAnalyticsTableColumns();
 
-    validateDimensionColumns(columns);
-
-    for (AnalyticsTableColumn col : ListUtils.union(columns, values)) {
-      sql += col.getName() + ",";
+    for (AnalyticsTableColumn col : columns) {
+      sql += quote(col.getName()) + ",";
     }
 
     sql = TextUtils.removeLastComma(sql) + ") select ";
 
-    for (AnalyticsTableColumn col : columns) {
-      sql += col.getAlias() + ",";
+    for (AnalyticsTableColumn col : dimensions) {
+      sql += col.getSelectExpression() + ",";
     }
 
     sql +=
-        valueExpression
+        approvalSelectExpression
+            + " as approvallevel, "
+            + valueExpression
             + " * ps.daysno as daysxvalue, "
             + "ps.daysno as daysno, "
             + valueExpression
@@ -372,7 +359,7 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
             + "inner join _categoryoptioncomboname aon on dv.attributeoptioncomboid=aon.categoryoptioncomboid "
             + "inner join _categoryoptioncomboname con on dv.categoryoptioncomboid=con.categoryoptioncomboid ";
 
-    if (!skipOutliers(params)) {
+    if (!params.isSkipOutliers()) {
       sql += getOutliersJoinStatement();
     }
 
@@ -398,10 +385,30 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     }
 
     if (whereClause != null) {
-      sql += "and " + whereClause;
+      sql += "and " + whereClause + " ";
+    }
+
+    if (analyticsExportSettings.isTableOrdering()) {
+      sql += "order by de.uid, co.uid";
     }
 
     invokeTimeAndLog(sql, String.format("Populate %s %s", tableName, valueTypes));
+  }
+
+  /**
+   * Returns the approval select expression based on the given year.
+   *
+   * @param year the year.
+   * @return the approval select expression.
+   */
+  private String getApprovalSelectExpression(Integer year) {
+    if (isApprovalEnabled(year)) {
+      return "coalesce(des.datasetapprovallevel, aon.approvallevel, da.minlevel, "
+          + DataApprovalLevelService.APPROVAL_LEVEL_UNAPPROVED
+          + ")";
+    } else {
+      return String.valueOf(DataApprovalLevelService.APPROVAL_LEVEL_HIGHEST);
+    }
   }
 
   /**
@@ -432,115 +439,79 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     return StringUtils.EMPTY;
   }
 
-  private List<AnalyticsTableColumn> getDimensionColumns() {
-    return getDimensionColumns(null, null);
-  }
-
-  private List<AnalyticsTableColumn> getDimensionColumns(
-      Integer year, AnalyticsTableUpdateParams params) {
+  private List<AnalyticsTableColumn> getColumns(AnalyticsTableUpdateParams params) {
     List<AnalyticsTableColumn> columns = new ArrayList<>();
 
     String idColAlias =
         "(de.uid || '-' || ps.iso || '-' || ou.uid || '-' || co.uid || '-' || ao.uid) as id ";
-    columns.add(new AnalyticsTableColumn(quote("id"), ColumnDataType.TEXT, idColAlias));
+    columns.add(new AnalyticsTableColumn("id", TEXT, idColAlias));
 
     List<DataElementGroupSet> dataElementGroupSets =
         idObjectManager.getDataDimensionsNoAcl(DataElementGroupSet.class);
 
-    List<OrganisationUnitGroupSet> orgUnitGroupSets =
-        idObjectManager.getDataDimensionsNoAcl(OrganisationUnitGroupSet.class);
-
     List<CategoryOptionGroupSet> disaggregationCategoryOptionGroupSets =
         categoryService.getDisaggregationCategoryOptionGroupSetsNoAcl();
-
-    List<CategoryOptionGroupSet> attributeCategoryOptionGroupSets =
-        categoryService.getAttributeCategoryOptionGroupSetsNoAcl();
 
     List<Category> disaggregationCategories =
         categoryService.getDisaggregationDataDimensionCategoriesNoAcl();
 
-    List<Category> attributeCategories = categoryService.getAttributeDataDimensionCategoriesNoAcl();
-
-    List<OrganisationUnitLevel> levels = organisationUnitService.getFilledOrganisationUnitLevels();
-
     for (DataElementGroupSet groupSet : dataElementGroupSets) {
       columns.add(
           new AnalyticsTableColumn(
-                  quote(groupSet.getUid()), CHARACTER_11, "degs." + quote(groupSet.getUid()))
-              .withCreated(groupSet.getCreated()));
+              groupSet.getUid(),
+              CHARACTER_11,
+              "degs." + quote(groupSet.getUid()),
+              groupSet.getCreated()));
     }
 
-    for (OrganisationUnitGroupSet groupSet : orgUnitGroupSets) {
-      columns.add(
-          new AnalyticsTableColumn(
-                  quote(groupSet.getUid()), CHARACTER_11, "ougs." + quote(groupSet.getUid()))
-              .withCreated(groupSet.getCreated()));
-    }
+    columns.addAll(getOrganisationUnitGroupSetColumns());
 
     for (CategoryOptionGroupSet groupSet : disaggregationCategoryOptionGroupSets) {
       columns.add(
           new AnalyticsTableColumn(
-                  quote(groupSet.getUid()), CHARACTER_11, "dcs." + quote(groupSet.getUid()))
-              .withCreated(groupSet.getCreated()));
+              groupSet.getUid(),
+              CHARACTER_11,
+              "dcs." + quote(groupSet.getUid()),
+              groupSet.getCreated()));
     }
 
-    for (CategoryOptionGroupSet groupSet : attributeCategoryOptionGroupSets) {
-      columns.add(
-          new AnalyticsTableColumn(
-                  quote(groupSet.getUid()), CHARACTER_11, "acs." + quote(groupSet.getUid()))
-              .withCreated(groupSet.getCreated()));
-    }
+    columns.addAll(getAttributeCategoryOptionGroupSetColumns());
 
     for (Category category : disaggregationCategories) {
       columns.add(
           new AnalyticsTableColumn(
-                  quote(category.getUid()), CHARACTER_11, "dcs." + quote(category.getUid()))
-              .withCreated(category.getCreated()));
+              category.getUid(),
+              CHARACTER_11,
+              "dcs." + quote(category.getUid()),
+              category.getCreated()));
     }
 
-    for (Category category : attributeCategories) {
-      columns.add(
-          new AnalyticsTableColumn(
-                  quote(category.getUid()), CHARACTER_11, "acs." + quote(category.getUid()))
-              .withCreated(category.getCreated()));
-    }
+    columns.addAll(getAttributeCategoryColumns());
+    columns.addAll(getOrganisationUnitLevelColumns());
+    columns.addAll(getPeriodTypeColumns("ps"));
+    columns.addAll(FIXED_COLS);
 
-    for (OrganisationUnitLevel level : levels) {
-      String column = quote(PREFIX_ORGUNITLEVEL + level.getLevel());
-      columns.add(
-          new AnalyticsTableColumn(column, CHARACTER_11, "ous." + column)
-              .withCreated(level.getCreated()));
-    }
-
-    columns.addAll(addPeriodTypeColumns("ps"));
-
-    String approvalCol =
-        isApprovalEnabled(year)
-            ? "coalesce(des.datasetapprovallevel, aon.approvallevel, da.minlevel, "
-                + APPROVAL_LEVEL_UNAPPROVED
-                + ") as approvallevel "
-            : DataApprovalLevelService.APPROVAL_LEVEL_HIGHEST + " as approvallevel";
-
-    columns.add(new AnalyticsTableColumn(quote("approvallevel"), INTEGER, approvalCol));
-    columns.addAll(getFixedColumns());
-    if (!skipOutliers(params)) {
+    if (!params.isSkipOutliers()) {
       columns.addAll(getOutlierStatsColumns());
     }
+
+    columns.addAll(getFactColumns());
 
     return filterDimensionColumns(columns);
   }
 
   /**
-   * Returns a list of columns representing data value.
+   * Returns a list of columns representing facts.
    *
    * @return a list of {@link AnalyticsTableColumn}.
    */
-  private List<AnalyticsTableColumn> getValueColumns() {
+  private List<AnalyticsTableColumn> getFactColumns() {
     return List.of(
-        new AnalyticsTableColumn(quote("daysxvalue"), DOUBLE, "daysxvalue"),
-        new AnalyticsTableColumn(quote("daysno"), INTEGER, NOT_NULL, "daysno"),
-        new AnalyticsTableColumn(quote("value"), DOUBLE, "value"),
-        new AnalyticsTableColumn(quote("textvalue"), TEXT, "textvalue"));
+        new AnalyticsTableColumn("approvallevel", INTEGER, NULL, FACT, "approvallevel"),
+        new AnalyticsTableColumn("daysxvalue", DOUBLE, NULL, FACT, "daysxvalue"),
+        new AnalyticsTableColumn("daysno", INTEGER, NOT_NULL, FACT, "daysno"),
+        new AnalyticsTableColumn("value", DOUBLE, NULL, FACT, "value"),
+        new AnalyticsTableColumn("textvalue", TEXT, NULL, FACT, "textvalue"));
   }
 
   /**
@@ -563,31 +534,24 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     return List.of(
 
         // TODO: Do not export IDs into analytics. We work only with UIDs.
-        new AnalyticsTableColumn(quote("sourceid"), INTEGER, NOT_NULL, "dv.sourceid"),
-        new AnalyticsTableColumn(quote("periodid"), INTEGER, NOT_NULL, "dv.periodid"),
+        new AnalyticsTableColumn("sourceid", INTEGER, NOT_NULL, "dv.sourceid"),
+        new AnalyticsTableColumn("periodid", INTEGER, NOT_NULL, "dv.periodid"),
         new AnalyticsTableColumn(
-            quote("categoryoptioncomboid"), INTEGER, NOT_NULL, "dv.categoryoptioncomboid"),
+            "categoryoptioncomboid", INTEGER, NOT_NULL, "dv.categoryoptioncomboid"),
         new AnalyticsTableColumn(
-            quote("attributeoptioncomboid"), INTEGER, NOT_NULL, "dv.attributeoptioncomboid"),
-        new AnalyticsTableColumn(quote("dataelementid"), INTEGER, NOT_NULL, "dv.dataelementid")
-            .withIndexColumns(List.of(quote("dataelementid"))),
-
-        // TODO: Remove all these name columns from here. Analytics tables should not have them.
-        new AnalyticsTableColumn(quote("de_name"), VARCHAR_255, "de.name"),
-        new AnalyticsTableColumn(quote("ou_name"), VARCHAR_255, "ou.name"),
-        new AnalyticsTableColumn(quote("coc_name"), VARCHAR_255, "co.name"),
-        new AnalyticsTableColumn(quote("aoc_name"), VARCHAR_255, "ao.name"),
-        new AnalyticsTableColumn(quote("petype"), VARCHAR_255, "pt.name"),
-        new AnalyticsTableColumn(quote("path"), VARCHAR_255, "ou.path"),
+            "attributeoptioncomboid", INTEGER, NOT_NULL, "dv.attributeoptioncomboid"),
+        new AnalyticsTableColumn("dataelementid", INTEGER, NOT_NULL, "dv.dataelementid"),
+        new AnalyticsTableColumn("petype", VARCHAR_255, "pt.name"),
+        new AnalyticsTableColumn("path", VARCHAR_255, "ou.path"),
         // mean
-        new AnalyticsTableColumn(quote("avg_middle_value"), DOUBLE, "stats.avg_middle_value"),
+        new AnalyticsTableColumn("avg_middle_value", DOUBLE, "stats.avg_middle_value"),
         // median
         new AnalyticsTableColumn(
-            quote("percentile_middle_value"), DOUBLE, "stats.percentile_middle_value"),
+            "percentile_middle_value", DOUBLE, "stats.percentile_middle_value"),
         // median of absolute deviations "MAD"
-        new AnalyticsTableColumn(quote("mad"), DOUBLE, "stats.mad"),
+        new AnalyticsTableColumn("mad", DOUBLE, "stats.mad"),
         // standard deviation
-        new AnalyticsTableColumn(quote("std_dev"), DOUBLE, "stats.std_dev"));
+        new AnalyticsTableColumn("std_dev", DOUBLE, "stats.std_dev"));
   }
 
   /**
@@ -617,7 +581,7 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
   @Override
   public void applyAggregationLevels(
       AnalyticsTablePartition partition, Collection<String> dataElements, int aggregationLevel) {
-    StringBuilder sql = new StringBuilder("update " + partition.getTempTableName() + " set ");
+    StringBuilder sql = new StringBuilder("update " + partition.getName() + " set ");
 
     for (int i = 0; i < aggregationLevel; i++) {
       int level = i + 1;
@@ -630,25 +594,11 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
     sql.deleteCharAt(sql.length() - ",".length());
 
     sql.append(" where oulevel > " + aggregationLevel);
-    sql.append(" and dx in (" + getQuotedCommaDelimitedString(dataElements) + ")");
+    sql.append(" and dx in (" + quotedCommaDelimitedString(dataElements) + ")");
 
-    log.debug("Aggregation level SQL: " + sql);
+    log.debug("Aggregation level SQL: '{}'", sql);
 
     jdbcTemplate.execute(sql.toString());
-  }
-
-  @Override
-  public void vacuumTables(AnalyticsTablePartition partition) {
-    String sql = statementBuilder.getVacuum(partition.getTempTableName());
-
-    log.debug("Vacuum SQL: " + sql);
-
-    jdbcTemplate.execute(sql);
-  }
-
-  @Override
-  public List<AnalyticsTableColumn> getFixedColumns() {
-    return FIXED_COLS;
   }
 
   /**
@@ -664,9 +614,10 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
         systemSettingManager.getIntegerSetting(SettingKey.IGNORE_ANALYTICS_APPROVAL_YEAR_THRESHOLD);
 
     log.debug(
-        String.format(
-            "Hide approval setting: %b, approval levels exists: %b, max years threshold: %d",
-            setting, levels, maxYears));
+        "Hide approval setting: {}, approval levels exists: {}, max years threshold: {}",
+        setting,
+        levels,
+        maxYears);
 
     if (year != null) {
       boolean periodOverMaxYears = AnalyticsUtils.periodIsOutsideApprovalMaxYears(year, maxYears);
@@ -685,19 +636,19 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
    */
   private String getOutliersJoinStatement() {
     return "left join (select t3.dataelementid, "
-        + "                           t3.sourceid, "
-        + "                           t3.categoryoptioncomboid, "
-        + "                           t3.attributeoptioncomboid, "
+        + "t3.sourceid, "
+        + "t3.categoryoptioncomboid, "
+        + "t3.attributeoptioncomboid, "
         // median of absolute deviations "mad" (median(xi - median(xi)))
-        + "                           percentile_cont(0.5) "
-        + "                           within group (order by abs(t3.value::double precision - t3.percentile_middle_value)) as MAD, "
+        + "percentile_cont(0.5) "
+        + "within group (order by abs(t3.value::double precision - t3.percentile_middle_value)) as MAD, "
         // mean
-        + "                           avg(t3.value::double precision)                                                 as avg_middle_value, "
+        + "avg(t3.value::double precision) as avg_middle_value, "
         // median of the samples (median(xi))
-        + "                           percentile_cont(0.5) "
-        + "                           within group (order by t3.value::double precision)                              as percentile_middle_value, "
+        + "percentile_cont(0.5) "
+        + "within group (order by t3.value::double precision) as percentile_middle_value, "
         // standard deviation of the normal distribution
-        + "                           stddev_pop(t3.value::double precision)                                          as std_dev "
+        + "stddev_pop(t3.value::double precision) as std_dev "
         // Table "t3" is the composition of the tables "t2" (median of xi) and "t3" (values xi).
         // For Z-Score  the mean (avg_middle_value) and standard deviation (std_dev) is used ((xi -
         // mean(x))/std_dev).
@@ -705,59 +656,55 @@ public class JdbcAnalyticsTableManager extends AbstractJdbcTableManager {
         // deviations (mad) is used (0.6745*(xi - median(x)/mad)).
         // The factor 0.6745 is the 0.75 quartile of the normal distribution, to which the "mad"
         // converges to.
-        + "                    from (select t1.dataelementid, "
-        + "                                 t1.sourceid, "
-        + "                                 t1.categoryoptioncomboid, "
-        + "                                 t1.attributeoptioncomboid, "
-        + "                                 t1.percentile_middle_value, "
-        + "                                 t2.value "
+        + "from (select t1.dataelementid, "
+        + "t1.sourceid, "
+        + "t1.categoryoptioncomboid, "
+        + "t1.attributeoptioncomboid, "
+        + "t1.percentile_middle_value, "
+        + "t2.value "
         // Table "t1" retrieving the median of all data element (dataelementid) values belongs to
         // the same organisation (sourceid)
         // coc and aoc.
-        + "                          from (select dv1.dataelementid                                   as dataelementid, "
-        + "                                       dv1.sourceid                                        as sourceid, "
-        + "                                       dv1.categoryoptioncomboid                           as categoryoptioncomboid, "
-        + "                                       dv1.attributeoptioncomboid                          as attributeoptioncomboid, "
+        + "from (select dv1.dataelementid as dataelementid, "
+        + "dv1.sourceid as sourceid, "
+        + "dv1.categoryoptioncomboid as categoryoptioncomboid, "
+        + "dv1.attributeoptioncomboid as attributeoptioncomboid, "
         // median
-        + "                                       percentile_cont(0.5) "
-        + "                                       within group (order by dv1.value::double precision) as percentile_middle_value "
-        + "                                from datavalue dv1 "
-        + "                                         inner join period pe on dv1.periodid = pe.periodid "
-        + "                                         inner join organisationunit ou on dv1.sourceid = ou.organisationunitid "
+        + "percentile_cont(0.5) "
+        + "within group (order by dv1.value::double precision) as percentile_middle_value "
+        + "from datavalue dv1 "
+        + "inner join period pe on dv1.periodid = pe.periodid "
+        + "inner join organisationunit ou on dv1.sourceid = ou.organisationunitid "
         // Only numeric values (value is varchar or string) can be used for stats calculation.
-        + "                                where dv1.value ~ '^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$' "
-        + "                                group by dv1.dataelementid, dv1.sourceid, dv1.categoryoptioncomboid, "
-        + "                                         dv1.attributeoptioncomboid) t1 "
-        + "                                   join "
+        + "where dv1.value ~ '^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$' "
+        + "group by dv1.dataelementid, dv1.sourceid, dv1.categoryoptioncomboid, "
+        + "dv1.attributeoptioncomboid) t1 "
+        + "join "
         // Table "t2" is the complement of the t1 table. It contains all values belong to the
         // specific median (see t1).
         // To "group by" criteria is added the time dimension (periodid). This part of the query has
         // to be verified (maybe add tei to aggregation criteria).
-        + "                               (select dv1.dataelementid          as dataelementid, "
-        + "                                       dv1.sourceid               as sourceid, "
-        + "                                       dv1.categoryoptioncomboid  as categoryoptioncomboid, "
-        + "                                       dv1.attributeoptioncomboid as attributeoptioncomboid, "
-        + "                                       dv1.value, "
-        + "                                       dv1.periodid "
-        + "                                from datavalue dv1 "
-        + "                                         inner join period pe on dv1.periodid = pe.periodid "
-        + "                                         inner join organisationunit ou on dv1.sourceid = ou.organisationunitid "
+        + "(select dv1.dataelementid as dataelementid, "
+        + "dv1.sourceid as sourceid, "
+        + "dv1.categoryoptioncomboid  as categoryoptioncomboid, "
+        + "dv1.attributeoptioncomboid as attributeoptioncomboid, "
+        + "dv1.value, "
+        + "dv1.periodid "
+        + "from datavalue dv1 "
+        + "inner join period pe on dv1.periodid = pe.periodid "
+        + "inner join organisationunit ou on dv1.sourceid = ou.organisationunitid "
         // Only numeric values (varchars) can be used for stats calculation.
-        + "                                where dv1.value ~ '^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$' "
-        + "                                group by dv1.dataelementid, dv1.sourceid, dv1.categoryoptioncomboid, "
-        + "                                         dv1.attributeoptioncomboid, dv1.value, dv1.periodid) t2 "
-        + "                               on t1.sourceid = t2.sourceid "
-        + "                                   and t1.categoryoptioncomboid = t2.categoryoptioncomboid "
-        + "                                   and t1.attributeoptioncomboid = t2.attributeoptioncomboid "
-        + "                                   and t1.dataelementid = t2.dataelementid) as t3 "
-        + "                    group by t3.dataelementid, t3.sourceid, t3.categoryoptioncomboid, "
-        + "                             t3.attributeoptioncomboid) as stats "
-        + "                   on dv.dataelementid = stats.dataelementid and dv.sourceid = stats.sourceid and "
-        + "                      dv.categoryoptioncomboid = stats.categoryoptioncomboid and "
-        + "                      dv.attributeoptioncomboid = stats.attributeoptioncomboid ";
-  }
-
-  private boolean skipOutliers(AnalyticsTableUpdateParams params) {
-    return params != null && params.isSkipOutliers();
+        + "where dv1.value ~ '^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$' "
+        + "group by dv1.dataelementid, dv1.sourceid, dv1.categoryoptioncomboid, "
+        + "dv1.attributeoptioncomboid, dv1.value, dv1.periodid) t2 "
+        + "on t1.sourceid = t2.sourceid "
+        + "and t1.categoryoptioncomboid = t2.categoryoptioncomboid "
+        + "and t1.attributeoptioncomboid = t2.attributeoptioncomboid "
+        + "and t1.dataelementid = t2.dataelementid) as t3 "
+        + "group by t3.dataelementid, t3.sourceid, t3.categoryoptioncomboid, "
+        + "t3.attributeoptioncomboid) as stats "
+        + "on dv.dataelementid = stats.dataelementid and dv.sourceid = stats.sourceid and "
+        + "dv.categoryoptioncomboid = stats.categoryoptioncomboid and "
+        + "dv.attributeoptioncomboid = stats.attributeoptioncomboid ";
   }
 }

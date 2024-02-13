@@ -31,6 +31,9 @@ import static org.hisp.dhis.analytics.DataQueryParams.VALUE_HEADER_NAME;
 import static org.hisp.dhis.analytics.DataQueryParams.VALUE_ID;
 import static org.hisp.dhis.common.DimensionalObject.DATA_X_DIM_ID;
 import static org.hisp.dhis.common.DimensionalObject.DIMENSION_SEP;
+import static org.hisp.dhis.db.model.DataType.BIGINT;
+import static org.hisp.dhis.db.model.DataType.GEOMETRY_POINT;
+import static org.hisp.dhis.db.model.DataType.TEXT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -45,7 +48,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.hisp.dhis.DhisConvenienceTest;
-import org.hisp.dhis.analytics.ColumnDataType;
 import org.hisp.dhis.analytics.DataQueryParams;
 import org.hisp.dhis.category.Category;
 import org.hisp.dhis.category.CategoryCombo;
@@ -418,10 +420,9 @@ class AnalyticsUtilsTest extends DhisConvenienceTest {
 
   @Test
   void testGetColumnType() {
-    assertEquals(ColumnDataType.BIGINT, AnalyticsUtils.getColumnType(ValueType.INTEGER, true));
-    assertEquals(
-        ColumnDataType.GEOMETRY_POINT, AnalyticsUtils.getColumnType(ValueType.COORDINATE, true));
-    assertEquals(ColumnDataType.TEXT, AnalyticsUtils.getColumnType(ValueType.COORDINATE, false));
+    assertEquals(BIGINT, AnalyticsUtils.getColumnType(ValueType.INTEGER, true));
+    assertEquals(GEOMETRY_POINT, AnalyticsUtils.getColumnType(ValueType.COORDINATE, true));
+    assertEquals(TEXT, AnalyticsUtils.getColumnType(ValueType.COORDINATE, false));
   }
 
   @Test
@@ -567,7 +568,7 @@ class AnalyticsUtilsTest extends DhisConvenienceTest {
     assertEquals("coB", dvs.getRow(1).get(3));
     assertEquals("aoB", dvs.getRow(1).get(4));
     assertEquals(2d, dvs.getRow(1).get(5));
-    assertEquals("[aggregated]", dvs.getRow(1).get(6));
+    assertEquals("", dvs.getRow(1).get(6));
 
     assertEquals("dxA", dvs.getRow(3).get(0));
     assertEquals("peB", dvs.getRow(3).get(1));
@@ -575,7 +576,7 @@ class AnalyticsUtilsTest extends DhisConvenienceTest {
     assertEquals("coA", dvs.getRow(3).get(3));
     assertNull(dvs.getRow(3).get(4));
     assertEquals(4d, dvs.getRow(3).get(5));
-    assertEquals("[aggregated]", dvs.getRow(3).get(6));
+    assertEquals("", dvs.getRow(3).get(6));
 
     assertEquals("dxC", dvs.getRow(6).get(0));
     assertEquals("peA", dvs.getRow(6).get(1));
@@ -583,7 +584,7 @@ class AnalyticsUtilsTest extends DhisConvenienceTest {
     assertNull(dvs.getRow(6).get(3));
     assertEquals("aoA", dvs.getRow(6).get(4));
     assertEquals(7, dvs.getRow(6).get(5));
-    assertEquals("[aggregated]", dvs.getRow(6).get(6));
+    assertEquals("", dvs.getRow(6).get(6));
   }
 
   @Test

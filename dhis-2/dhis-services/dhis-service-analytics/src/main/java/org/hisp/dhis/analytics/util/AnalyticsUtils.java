@@ -60,12 +60,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.math3.util.Precision;
-import org.hisp.dhis.analytics.ColumnDataType;
 import org.hisp.dhis.analytics.DataQueryParams;
 import org.hisp.dhis.analytics.orgunit.OrgUnitHelper;
 import org.hisp.dhis.calendar.Calendar;
@@ -93,6 +93,7 @@ import org.hisp.dhis.commons.util.TextUtils;
 import org.hisp.dhis.dataelement.DataElement;
 import org.hisp.dhis.dataelement.DataElementOperand;
 import org.hisp.dhis.dataelement.DataElementOperand.TotalType;
+import org.hisp.dhis.db.model.DataType;
 import org.hisp.dhis.dxf2.datavalue.DataValue;
 import org.hisp.dhis.dxf2.datavalueset.DataValueSet;
 import org.hisp.dhis.expression.ExpressionService;
@@ -119,6 +120,7 @@ import org.springframework.util.Assert;
  * @author Lars Helge Overland
  */
 @Slf4j
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class AnalyticsUtils {
   private static final int DECIMALS_NO_ROUNDING = 10;
 
@@ -316,21 +318,21 @@ public class AnalyticsUtils {
    *
    * @param valueType the value type to represent as database column type.
    * @param spatialSupport indicates whether spatial data types are enabled.
-   * @return the {@link ColumnDataType}.
+   * @return the {@link DataType}.
    */
-  public static ColumnDataType getColumnType(ValueType valueType, boolean spatialSupport) {
+  public static DataType getColumnType(ValueType valueType, boolean spatialSupport) {
     if (valueType.isDecimal()) {
-      return ColumnDataType.DOUBLE;
+      return DataType.DOUBLE;
     } else if (valueType.isInteger()) {
-      return ColumnDataType.BIGINT;
+      return DataType.BIGINT;
     } else if (valueType.isBoolean()) {
-      return ColumnDataType.INTEGER;
+      return DataType.INTEGER;
     } else if (valueType.isDate()) {
-      return ColumnDataType.TIMESTAMP;
+      return DataType.TIMESTAMP;
     } else if (valueType.isGeo() && spatialSupport) {
-      return ColumnDataType.GEOMETRY_POINT; // TODO consider GEOMETRY
+      return DataType.GEOMETRY_POINT; // TODO consider GEOMETRY
     } else {
-      return ColumnDataType.TEXT;
+      return DataType.TEXT;
     }
   }
 
@@ -476,7 +478,6 @@ public class AnalyticsUtils {
       dv.setAttributeOptionCombo(aoc != null ? String.valueOf(aoc) : null);
       dv.setValue(String.valueOf(row.get(vlInx)));
       dv.setComment(KEY_AGG_VALUE);
-      dv.setStoredBy(KEY_AGG_VALUE);
       dv.setCreated(created);
       dv.setLastUpdated(created);
 
@@ -530,7 +531,7 @@ public class AnalyticsUtils {
       objects.add(row.get(coInx));
       objects.add(row.get(aoInx));
       objects.add(row.get(vlInx));
-      objects.add(KEY_AGG_VALUE);
+      objects.add("");
       objects.add(created);
       objects.add(created);
       objects.add(KEY_AGG_VALUE);
@@ -1051,7 +1052,7 @@ public class AnalyticsUtils {
             dio ->
                 dio.getDimensionItem() != null
                     && dio.getDimensionItemWithQueryModsId().equals(dimensionIdentifier))
-        .collect(Collectors.toList());
+        .toList();
   }
 
   /**

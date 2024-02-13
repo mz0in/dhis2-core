@@ -38,7 +38,6 @@ import static org.mockito.Mockito.when;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.stream.Collectors;
 import org.hisp.dhis.analytics.event.EventAnalyticsDimensionsService;
 import org.hisp.dhis.category.CategoryService;
 import org.hisp.dhis.common.BaseIdentifiableObject;
@@ -50,7 +49,6 @@ import org.hisp.dhis.program.ProgramStage;
 import org.hisp.dhis.program.ProgramStageService;
 import org.hisp.dhis.security.acl.AclService;
 import org.hisp.dhis.trackedentity.TrackedEntityAttribute;
-import org.hisp.dhis.user.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -78,11 +76,7 @@ class EventAnalyticsDimensionsServiceTest {
 
     eventAnalyticsDimensionsService =
         new DefaultEventAnalyticsDimensionsService(
-            programStageService,
-            programService,
-            categoryService,
-            mock(AclService.class),
-            mock(CurrentUserService.class));
+            programStageService, programService, categoryService, mock(AclService.class));
   }
 
   @Test
@@ -92,7 +86,7 @@ class EventAnalyticsDimensionsServiceTest {
             .getQueryDimensionsByProgramStageId(PROGRAM_UID, "anUid")
             .stream()
             .map(PrefixedDimension::getItem)
-            .collect(Collectors.toList());
+            .toList();
 
     assertTrue(
         analyticsDimensions.stream()
@@ -111,7 +105,7 @@ class EventAnalyticsDimensionsServiceTest {
     Collection<BaseIdentifiableObject> analyticsDimensions =
         eventAnalyticsDimensionsService.getAggregateDimensionsByProgramStageId("anUid").stream()
             .map(PrefixedDimension::getItem)
-            .collect(Collectors.toList());
+            .toList();
 
     assertTrue(
         analyticsDimensions.stream()

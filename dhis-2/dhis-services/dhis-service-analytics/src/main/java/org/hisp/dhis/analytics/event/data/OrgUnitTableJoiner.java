@@ -27,19 +27,19 @@
  */
 package org.hisp.dhis.analytics.event.data;
 
+import static org.hisp.dhis.analytics.AnalyticsConstants.ANALYTICS_TBL_ALIAS;
+import static org.hisp.dhis.analytics.AnalyticsConstants.ORG_UNIT_GROUPSET_STRUCT_ALIAS;
+import static org.hisp.dhis.analytics.AnalyticsConstants.ORG_UNIT_STRUCT_ALIAS;
+import static org.hisp.dhis.analytics.AnalyticsConstants.OWNERSHIP_TBL_ALIAS;
 import static org.hisp.dhis.analytics.OrgUnitFieldType.OWNER_AT_START;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.ANALYTICS_TBL_ALIAS;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.ORG_UNIT_GROUPSET_STRUCT_ALIAS;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.ORG_UNIT_STRUCT_ALIAS;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.OWNERSHIP_TBL_ALIAS;
-import static org.hisp.dhis.analytics.util.AnalyticsSqlUtils.quote;
+import static org.hisp.dhis.system.util.SqlUtils.quote;
 import static org.hisp.dhis.util.DateUtils.getMediumDateString;
 import static org.hisp.dhis.util.DateUtils.plusOneDay;
 
 import java.util.Date;
 import org.hisp.dhis.analytics.AnalyticsTableType;
 import org.hisp.dhis.analytics.event.EventQueryParams;
-import org.hisp.dhis.analytics.table.PartitionUtils;
+import org.hisp.dhis.analytics.table.model.AnalyticsTable;
 import org.hisp.dhis.program.AnalyticsType;
 
 /**
@@ -94,8 +94,7 @@ public final class OrgUnitTableJoiner {
             : plusOneDay(params.getLatestEndDate());
 
     String ownershipTable =
-        PartitionUtils.getTableName(
-            AnalyticsTableType.OWNERSHIP.getTableName(), params.getProgram());
+        AnalyticsTable.getTableName(AnalyticsTableType.OWNERSHIP, params.getProgram());
 
     return "left join "
         + ownershipTable

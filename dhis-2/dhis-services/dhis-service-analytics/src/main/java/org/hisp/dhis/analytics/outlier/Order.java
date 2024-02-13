@@ -28,19 +28,19 @@
 package org.hisp.dhis.analytics.outlier;
 
 import static org.hisp.dhis.analytics.common.ColumnHeader.ABSOLUTE_DEVIATION;
-import static org.hisp.dhis.analytics.common.ColumnHeader.ATTRIBUTE_OPTION_COMBO_NAME;
-import static org.hisp.dhis.analytics.common.ColumnHeader.CATEGORY_OPTION_COMBO_NAME;
-import static org.hisp.dhis.analytics.common.ColumnHeader.DIMENSION_NAME;
 import static org.hisp.dhis.analytics.common.ColumnHeader.LOWER_BOUNDARY;
 import static org.hisp.dhis.analytics.common.ColumnHeader.MEDIAN_ABS_DEVIATION;
-import static org.hisp.dhis.analytics.common.ColumnHeader.ORG_UNIT_NAME;
 import static org.hisp.dhis.analytics.common.ColumnHeader.STANDARD_DEVIATION;
 import static org.hisp.dhis.analytics.common.ColumnHeader.UPPER_BOUNDARY;
 import static org.hisp.dhis.analytics.common.ColumnHeader.ZSCORE;
+import static org.hisp.dhis.feedback.ErrorCode.E7181;
 
+import java.util.Arrays;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.hisp.dhis.analytics.common.ColumnHeader;
+import org.hisp.dhis.common.IllegalQueryException;
+import org.hisp.dhis.feedback.ErrorMessage;
 
 /**
  * Candidate on which to order an outlier detection result set.
@@ -50,20 +50,29 @@ import org.hisp.dhis.analytics.common.ColumnHeader;
 @RequiredArgsConstructor
 public enum Order {
   Z_SCORE(ZSCORE.getItem(), "z_score"),
-  MODIFIED_ZSCORE(ColumnHeader.MODIFIED_ZSCORE.getItem(), "z_score"),
-  DE_NAME(DIMENSION_NAME.getItem(), "de_name"),
-  OU_NAME(ORG_UNIT_NAME.getItem(), "ou_name"),
-  COC_NAME(CATEGORY_OPTION_COMBO_NAME.getItem(), "coc_name"),
-  AOC_NAME(ATTRIBUTE_OPTION_COMBO_NAME.getItem(), "aoc_name"),
+  MODIFIED_Z_SCORE(ColumnHeader.MODIFIED_Z_SCORE.getItem(), "z_score"),
   VALUE("value", "value"),
   MEDIAN(ColumnHeader.MEDIAN.getItem(), "middle_value"),
   MEAN(ColumnHeader.MEAN.getItem(), "middle_value"),
-  STD_DEV(STANDARD_DEVIATION.getName(), "std_dev"),
-  MEDIAN_ABS_DEV(MEDIAN_ABS_DEVIATION.getItem(), "middle_value_abs_dev"),
-  MEAN_ABS_DEV(ABSOLUTE_DEVIATION.getItem(), "middle_value_abs_dev"),
+  STD_DEV(STANDARD_DEVIATION.getItem(), "std_dev"),
+  MEDIAN_ABS_DEV(MEDIAN_ABS_DEVIATION.getItem(), "mad"),
+  ABS_DEV(ABSOLUTE_DEVIATION.getItem(), "middle_value_abs_dev"),
   LOWER_BOUND(LOWER_BOUNDARY.getItem(), "lower_bound"),
   UPPER_BOUND(UPPER_BOUNDARY.getItem(), "upper_bound");
 
   @Getter private final String headerName;
   @Getter private final String columnName;
+
+  /**
+   * The method retrieves the enumerator item related to the column for order by statement.
+   *
+   * @param headerName is the order by field. It has to be the same as header item name.
+   * @return the {@link Order}.
+   */
+  public static Order getOrderBy(String headerName) {
+    return Arrays.stream(values())
+        .filter(o -> o.getHeaderName().equalsIgnoreCase(headerName))
+        .findFirst()
+        .orElseThrow(() -> new IllegalQueryException(new ErrorMessage(E7181, headerName)));
+  }
 }

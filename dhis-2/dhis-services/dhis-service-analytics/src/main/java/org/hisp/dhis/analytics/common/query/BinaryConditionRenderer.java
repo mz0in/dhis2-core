@@ -35,11 +35,13 @@ import static org.hisp.dhis.common.QueryOperator.GT;
 import static org.hisp.dhis.common.QueryOperator.LE;
 import static org.hisp.dhis.common.QueryOperator.LT;
 import static org.hisp.dhis.common.QueryOperator.NEQ;
+import static org.hisp.dhis.common.QueryOperator.NIEQ;
 import static org.hisp.dhis.common.QueryOperator.NILIKE;
 import static org.hisp.dhis.common.QueryOperator.NLIKE;
 import static org.hisp.dhis.commons.util.TextUtils.EMPTY;
 import static org.hisp.dhis.commons.util.TextUtils.SPACE;
 import static org.hisp.dhis.feedback.ErrorCode.E2035;
+import static org.hisp.dhis.feedback.ErrorCode.E2045;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -107,13 +109,29 @@ public class BinaryConditionRenderer extends BaseRenderable {
       return InOrEqConditionRenderer.of(left, right);
     }
 
+    // IEQ
+    if (QueryOperator.IEQ == queryOperator) {
+      if (right instanceof ConstantValuesRenderer constantValuesRenderer) {
+        return InOrEqConditionRenderer.of(
+            LowerRenderer.of(left),
+            constantValuesRenderer.withArgumentTransformer(String::toLowerCase));
+      }
+      throw new IllegalQueryException(E2045);
+    }
+
+    if (NIEQ == queryOperator) {
+      return OrCondition.of(
+          IsNullConditionRenderer.of(left, true),
+          NotEqConditionRenderer.of(LowerRenderer.of(left), LowerRenderer.of(right)));
+    }
+
     // NE / NEQ
-    if (NEQ == queryOperator) {
+    if (NEQ == queryOperator || QueryOperator.NE == queryOperator) {
       if (hasNullValue(right)) {
         return IsNullConditionRenderer.of(left, false);
       }
       return OrCondition.of(
-          List.of(IsNullConditionRenderer.of(left, true), NotEqConditionRenderer.of(left, right)));
+          IsNullConditionRenderer.of(left, true), NotEqConditionRenderer.of(left, right));
     }
 
     // LIKE / ILIKE
@@ -128,11 +146,10 @@ public class BinaryConditionRenderer extends BaseRenderable {
       }
 
       return OrCondition.of(
-          List.of(
-              IsNullConditionRenderer.of(left, true),
-              NLIKE == queryOperator
-                  ? NotLikeConditionRenderer.of(left, right)
-                  : NotILikeConditionRenderer.of(left, right)));
+          IsNullConditionRenderer.of(left, true),
+          NLIKE == queryOperator
+              ? NotLikeConditionRenderer.of(left, right)
+              : NotILikeConditionRenderer.of(left, right));
     }
 
     if (comparisonOperators.contains(queryOperator)) {
